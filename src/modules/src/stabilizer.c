@@ -80,6 +80,96 @@ uint32_t motorPowerM4;  // Motor 4 power output (16bit value used: 0 - 65535)
 static bool isInit;
 
 //new tasks
+//main control
+void mainControlInit(void)
+{
+  if(isInit)
+    return;
+
+  motorsInit(motorMapDefaultBrushed);
+
+  xTaskCreate(mainControlTask, MAIN_CONTROL_TASK_NAME,
+		  MAIN_CONTROL_TASK_STACKSIZE, NULL, MAIN_CONTROL_TASK_PRI, NULL);
+
+  isInit = true;
+}
+bool mainControlTest(void)
+{
+  bool pass = true;
+
+  //pass &= motorsTest();
+  return pass;
+}
+// reference generator
+void referenceGeneratorInit(void)
+{
+  if(isInit)
+    return;
+
+  motorsInit(motorMapDefaultBrushed);
+
+  xTaskCreate(referenceGeneratorTask, REF_GENERATOR_TASK_STACKSIZE,
+		  REF_GENERATOR_TASK_STACKSIZE, NULL, REF_GENERATOR_TASK_PRI, NULL);
+
+  isInit = true;
+}
+bool referenceGeneratorTest(void)
+{
+  bool pass = true;
+
+  //pass &= motorsTest();
+  return pass;
+}
+
+static void referenceGeneratorTask(void* param)
+{
+  //Wait for the system to be fully started
+  systemWaitStart();
+  while(1)
+  {
+	  // do stuff
+  }
+}
+
+void modeSwitchInit(void)
+{
+  if(isInit)
+    return;
+
+  motorsInit(motorMapDefaultBrushed);
+
+  xTaskCreate(modeSwitchTask, MODE_SWITCH_TASK_NAME,
+		  MODE_SWITCH_TASK_STACKSIZE, NULL, MODE_SWITCH_TASK_PRI, NULL);
+
+  isInit = true;
+}
+bool modeSwitchTest(void)
+{
+  bool pass = true;
+
+  //pass &= motorsTest();
+  return pass;
+}
+
+static void modeSwitchTask(void* param)
+{
+  //Wait for the system to be fully started
+  systemWaitStart();
+  while(1)
+  {
+	  // do stuff
+  }
+}
+
+static void mainControlTask(void* param)
+{
+  //Wait for the system to be fully started
+  systemWaitStart();
+  while(1)
+  {
+	  // do stuff
+  }
+}
 
 
 static uint16_t limitThrust(int32_t value);

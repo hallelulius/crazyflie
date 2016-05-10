@@ -81,6 +81,10 @@
 #define PARAM_TASK_PRI          1
 #define PROXIMITY_TASK_PRI      0
 #define PM_TASK_PRI             0
+// new tasks ,what priority to use?
+#define MAIN_CONTROL_TASK_PRI	3
+#define REF_GENERATOR_TASK_PRI	3
+#define MODE_SWITCH_TASK_PRI	0
 
 #ifdef PLATFORM_CF2
   #define SYSLINK_TASK_PRI        5

@@ -181,9 +181,9 @@ void systemTask(void *arg)
   commanderInit();
   stabilizerInit();
   //  new tasks added here
-  main_controlInit();
-  reference_generatorInit();
-  mode_switchInit();
+  mainControlInit();
+  referenceGeneratorInit();
+  modeSwitchInit();
 
 #ifdef PLATFORM_CF2
   deckInit();
@@ -201,6 +201,10 @@ void systemTask(void *arg)
   pass &= commTest();
   pass &= commanderTest();
   pass &= stabilizerTest();
+  // new tasks test
+  pass &= mainControlTest();
+  pass &= referenceGeneratorTest();
+  pass &= modeSwitchTest();
 #ifdef PLATFORM_CF2
   pass &= deckTest();
   #endif
