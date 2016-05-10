@@ -42,15 +42,15 @@
 #include "param.h"
 #include "sitaw.h"
 #ifdef PLATFORM_CF1
-  #include "ms5611.h"
+#include "ms5611.h"
 #else
-  #include "lps25h.h"
+#include "lps25h.h"
 #endif
 #include "num.h"
 #include "position_estimator.h"
 #include "position_controller.h"
 #include "altitude_hold.h"
-#include "led.h"
+//#include "led.h"
 
 /**
  * Defines in what divided update rate should the attitude
@@ -78,178 +78,274 @@ uint32_t motorPowerM3;  // Motor 3 power output (16bit value used: 0 - 65535)
 uint32_t motorPowerM4;  // Motor 4 power output (16bit value used: 0 - 65535)
 
 static bool isInit;
+static bool isInit2;
+static bool isInit3;
+static bool isInit4;
+
+static uint16_t limitThrust(int32_t value);
+
+//global variable for the tasks
+static bool mode;
+const int NREF = 4;
+static double referenceSignal[NREF];
+xSemaphoreHandle gatekeeperRef = 0;
+xSemaphoreHandle gatekeeperMode = 0;
+
 
 //new tasks
 //main control
 void mainControlInit(void)
 {
-  if(isInit)
-    return;
+	if(isInit2)
+		return;
 
-  motorsInit(motorMapDefaultBrushed);
+	ledInit();
+	gatekeeperRef = xSemaphoreCreateMutex();
+	gatekeeperMode = xSemaphoreCreateMutex();
 
-  xTaskCreate(mainControlTask, MAIN_CONTROL_TASK_NAME,
-		  MAIN_CONTROL_TASK_STACKSIZE, NULL, MAIN_CONTROL_TASK_PRI, NULL);
+	xTaskCreate(mainControlTask, MAIN_CONTROL_TASK_NAME,
+			MAIN_CONTROL_TASK_STACKSIZE, NULL, MAIN_CONTROL_TASK_PRI, NULL);
 
-  isInit = true;
+	isInit2 = true;
 }
+
 bool mainControlTest(void)
 {
-  bool pass = true;
-
-  //pass &= motorsTest();
-  return pass;
-}
-// reference generator
-void referenceGeneratorInit(void)
-{
-  if(isInit)
-    return;
-
-  motorsInit(motorMapDefaultBrushed);
-
-  xTaskCreate(referenceGeneratorTask, REF_GENERATOR_TASK_STACKSIZE,
-		  REF_GENERATOR_TASK_STACKSIZE, NULL, REF_GENERATOR_TASK_PRI, NULL);
-
-  isInit = true;
-}
-bool referenceGeneratorTest(void)
-{
-  bool pass = true;
-
-  //pass &= motorsTest();
-  return pass;
-}
-
-static void referenceGeneratorTask(void* param)
-{
-  //Wait for the system to be fully started
-  systemWaitStart();
-  while(1)
-  {
-	  // do stuff
-  }
-}
-
-void modeSwitchInit(void)
-{
-  if(isInit)
-    return;
-
-  motorsInit(motorMapDefaultBrushed);
-
-  xTaskCreate(modeSwitchTask, MODE_SWITCH_TASK_NAME,
-		  MODE_SWITCH_TASK_STACKSIZE, NULL, MODE_SWITCH_TASK_PRI, NULL);
-
-  isInit = true;
-}
-bool modeSwitchTest(void)
-{
-  bool pass = true;
-
-  //pass &= motorsTest();
-  return pass;
-}
-
-static void modeSwitchTask(void* param)
-{
-  //Wait for the system to be fully started
-  systemWaitStart();
-  while(1)
-  {
-	  // do stuff
-  }
+	// not sure what to add here
+	bool pass = true;
+	return pass;
 }
 
 static void mainControlTask(void* param)
 {
-  //Wait for the system to be fully started
-  systemWaitStart();
-  while(1)
-  {
-	  // do stuff
-  }
+	//Wait for the system to be fully started
+	int currMode;
+	double currRef[NREF];
+	systemWaitStart();
+
+	while(1)
+	{
+		if (xSemaphoreTake(gatekeeperMode, 1000))
+		{
+			currMode = mode;
+			xSemaphoreGive(gatekeeperMode);
+		}
+		else
+		{
+			// error message here
+		}
+
+		if (xSemaphoreTake(gatekeeperRef, 1000))
+		{
+			for (int i = 0; i<NREF; i++)
+			{
+				currRef[i] = referenceSignal[i];
+			}
+			xSemaphoreGive(gatekeeperRef);
+		}
+		else
+		{
+			//show error message
+		}
+		// do more control stuff
+		if (mode == 1){
+			motorPowerM1 = limitThrust(fabs(10000*currRef[0]));
+			motorPowerM2 = limitThrust(fabs(10000*currRef[1]));
+			motorPowerM3 = limitThrust(fabs(10000*currRef[2]));
+			motorPowerM4 = limitThrust(fabs(10000*currRef[3]));
+		}
+		else
+		{
+			motorPowerM1 = limitThrust(0);
+			motorPowerM2 = limitThrust(0);
+			motorPowerM3 = limitThrust(0);
+			motorPowerM4 = limitThrust(0);
+		}
+		if (imu6IsCalibrated()){
+			motorsSetRatio(MOTOR_M1, motorPowerM1);
+			motorsSetRatio(MOTOR_M2, motorPowerM2);
+			motorsSetRatio(MOTOR_M3, motorPowerM3);
+			motorsSetRatio(MOTOR_M4, motorPowerM4);
+		}
+
+		vDelay(M2T(250)); // is vDelay enough?
+	}
 }
 
+// reference generator
+void referenceGeneratorInit(void)
+{
+	if(isInit3)
+		return;
+	for (int i=0; i<NREF; i++){
+		referenceSignal[i] = 0;
+	}
 
-static uint16_t limitThrust(int32_t value);
+	xTaskCreate(referenceGeneratorTask, REF_GENERATOR_TASK_STACKSIZE,
+			REF_GENERATOR_TASK_STACKSIZE, NULL, REF_GENERATOR_TASK_PRI, NULL);
+
+	isInit3 = true;
+}
+
+bool referenceGeneratorTest(void)
+{
+	bool pass = true;
+
+	return pass;
+}
+
+static void referenceGeneratorTask(void* param)
+{
+	bool increase = true;
+	systemWaitStart();
+
+	while(1)
+	{
+		if(xSemaphoreTake(gatekeeperRef, 2000))
+		{
+
+			for(int i = 0; i<NREF; i++)
+			{
+				if (referenceSignal[i]< 2 && increase)
+				{
+					referenceSignal[i]+= 0.001;
+				}
+				else if (referenceSignal[i] >= 0)
+				{
+					referenceSignal[i]-= 0.001;
+					increase = false;
+				}
+				else
+				{
+					increase = true;
+				}
+			}
+			xSemaphoreGive(gatekeeperRef);
+		}
+		vTaskDelay(M2T(250)); //increase later
+	}
+}
+
+void modeSwitchInit(void)
+{
+	if(isInit4)
+		return;
+	mode = 0;
+	xTaskCreate(modeSwitchTask, MODE_SWITCH_TASK_NAME,
+			MODE_SWITCH_TASK_STACKSIZE, NULL, MODE_SWITCH_TASK_PRI, NULL);
+
+	isInit4 = true;
+}
+bool modeSwitchTest(void)
+{
+	bool pass = true;
+	//pass &= motorsTest();
+	return pass;
+}
+
+static void modeSwitchTask(void* param)
+{
+	//Wait for the system to be fully started
+	systemWaitStart();
+	while(1)
+	{
+		if(xSemaphoreTake(gatekeeperMode, 2000)){
+			if (mode == 1){
+				mode = 0;
+				ledSet(0, 1); // which led is this? LED_BLUE_L
+			}
+			else{
+				mode = 1;
+				ledSet(0, 0);
+			}
+			xSemaphoreGive(gatekeeperMode);
+		}
+		vTaskDelay(M2T(1000)); //increase later
+	}
+}
 
 static void stabilizerTask(void* param)
 {
-  uint32_t attitudeCounter = 0;
-  uint32_t lastWakeTime;
+	uint32_t attitudeCounter = 0;
+	uint32_t lastWakeTime;
 
-  vTaskSetApplicationTaskTag(0, (void*)TASK_STABILIZER_ID_NBR);
+	vTaskSetApplicationTaskTag(0, (void*)TASK_STABILIZER_ID_NBR);
 
-  //Wait for the system to be fully started to start stabilization loop
-  systemWaitStart();
+	//Wait for the system to be fully started to start stabilization loop
+	systemWaitStart();
 
-  lastWakeTime = xTaskGetTickCount ();
+	lastWakeTime = xTaskGetTickCount ();
 
-  while(1)
-  {
-    vTaskDelayUntil(&lastWakeTime, F2T(IMU_UPDATE_FREQ)); // 500Hz
+	while(1)
+	{
+		vTaskDelayUntil(&lastWakeTime, F2T(IMU_UPDATE_FREQ)); // 500Hz
 
-    // Magnetometer not yet used more then for logging.
-    imu9Read(&gyro, &acc, &mag);
+		// Magnetometer not yet used more then for logging.
+		imu9Read(&gyro, &acc, &mag);
 
-    if (imu6IsCalibrated())
-    {
-      // 250HZ
-      if (++attitudeCounter >= ATTITUDE_UPDATE_RATE_DIVIDER)
-      {
-        sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
-        sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
+		if (imu6IsCalibrated())
+		{
+			// 250HZ
+			if (++attitudeCounter >= ATTITUDE_UPDATE_RATE_DIVIDER)
+			{
+				sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
+				sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
 
-        // Set motors depending on the euler angles
-        motorPowerM1 = limitThrust(fabs(32000*eulerYawActual/180.0));
-        motorPowerM2 = limitThrust(fabs(32000*eulerPitchActual/180.0));
-        motorPowerM3 = limitThrust(fabs(32000*eulerRollActual/180.0));
-        motorPowerM4 = limitThrust(fabs(32000*eulerYawActual/180.0));
-        
-        motorsSetRatio(MOTOR_M1, motorPowerM1);
-        motorsSetRatio(MOTOR_M2, motorPowerM2);
-        motorsSetRatio(MOTOR_M3, motorPowerM3);
-        motorsSetRatio(MOTOR_M4, motorPowerM4);
+				// Set motors depending on the euler angles
+				//motorPowerM1 = limitThrust(fabs(32000*eulerYawActual/180.0));
+				//motorPowerM2 = limitThrust(fabs(32000*eulerPitchActual/180.0));
+				//motorPowerM3 = limitThrust(fabs(32000*eulerRollActual/180.0));
+				//motorPowerM4 = limitThrust(fabs(32000*eulerYawActual/180.0));
 
-        attitudeCounter = 0;
-      }
-    }
-  }
+				//motorsSetRatio(MOTOR_M1, motorPowerM1);
+				//motorsSetRatio(MOTOR_M2, motorPowerM2);
+				//motorsSetRatio(MOTOR_M3, motorPowerM3);
+				//motorsSetRatio(MOTOR_M4, motorPowerM4);
+
+				attitudeCounter = 0;
+			}
+		}
+	}
 }
 
 void stabilizerInit(void)
 {
-  if(isInit)
-    return;
+	if(isInit)
+		return;
 
-  motorsInit(motorMapDefaultBrushed);
-  imu6Init();
-  sensfusion6Init();
-  attitudeControllerInit();
+	motorsInit(motorMapDefaultBrushed);
+	imu6Init();
+	sensfusion6Init();
+	attitudeControllerInit();
 
-  xTaskCreate(stabilizerTask, STABILIZER_TASK_NAME,
-              STABILIZER_TASK_STACKSIZE, NULL, STABILIZER_TASK_PRI, NULL);
+	xTaskCreate(stabilizerTask, STABILIZER_TASK_NAME,
+			STABILIZER_TASK_STACKSIZE, NULL, STABILIZER_TASK_PRI, NULL);
 
-  isInit = true;
+	isInit = true;
 }
 
 bool stabilizerTest(void)
 {
-  bool pass = true;
+	bool pass = true;
 
-  pass &= motorsTest();
-  pass &= imu6Test();
-  pass &= sensfusion6Test();
-  pass &= attitudeControllerTest();
+	pass &= motorsTest();
+	pass &= imu6Test();
+	pass &= sensfusion6Test();
+	pass &= attitudeControllerTest();
 
-  return pass;
+	return pass;
 }
 
 static uint16_t limitThrust(int32_t value)
 {
-  return limitUint16(value);
+	return limitUint16(value);
 }
+
+LOG_GROUP_START(tasks)
+LOG_ADD(LOG_INT8, mode, &mode)
+LOG_ADD(LOG_FLOAT, ref, &referenceSignal[0]) // does this work?
+
+LOG_GROUP_STOP(tasks)
 
 LOG_GROUP_START(stabilizer)
 LOG_ADD(LOG_FLOAT, roll, &eulerRollActual)

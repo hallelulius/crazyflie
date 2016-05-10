@@ -33,5 +33,17 @@ void stabilizerInit(void);
 
 bool stabilizerTest(void);
 
+void mainControlInit(void);
+
+bool mainControlTest(void);
+
+void referenceGeneratorInit(void);
+
+bool referenceGeneratorTest(void);
+
+void modeSwitchInit(void);
+
+bool modeSwitchTest(void);
+
 
 #endif /* STABALIZER_H_ */
