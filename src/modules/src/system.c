@@ -89,6 +89,7 @@ void systemLaunch(void)
               SYSTEM_TASK_STACKSIZE, NULL,
               SYSTEM_TASK_PRI, NULL);
 
+
 }
 
 // This must be the first module to be initialized!
@@ -179,6 +180,11 @@ void systemTask(void *arg)
   commInit();
   commanderInit();
   stabilizerInit();
+  //  new tasks added here
+  main_controlInit();
+  reference_generatorInit();
+  mode_switchInit();
+
 #ifdef PLATFORM_CF2
   deckInit();
   #endif
