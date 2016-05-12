@@ -87,10 +87,13 @@ static uint16_t limitThrust(int32_t value);
 //global variable for the tasks
 static bool mode;
 const int NREF = 4;
-static double referenceSignal[NREF];
+double referenceSignal[4];
 xSemaphoreHandle gatekeeperRef = 0;
 xSemaphoreHandle gatekeeperMode = 0;
 
+static void mainControlTask(void *arg);
+static void referenceGeneratorTask(void *arg);
+static void modeSwitchTask(void *arg);
 
 //new tasks
 //main control
@@ -119,7 +122,7 @@ bool mainControlTest(void)
 static void mainControlTask(void* param)
 {
 	//Wait for the system to be fully started
-	int currMode;
+	int currMode = 0;
 	double currRef[NREF];
 	systemWaitStart();
 
@@ -137,7 +140,8 @@ static void mainControlTask(void* param)
 
 		if (xSemaphoreTake(gatekeeperRef, 1000))
 		{
-			for (int i = 0; i<NREF; i++)
+			int i;
+			for (i = 0; i<NREF; i++)
 			{
 				currRef[i] = referenceSignal[i];
 			}
@@ -148,7 +152,7 @@ static void mainControlTask(void* param)
 			//show error message
 		}
 		// do more control stuff
-		if (mode == 1){
+		if (currMode == 1){
 			motorPowerM1 = limitThrust(fabs(10000*currRef[0]));
 			motorPowerM2 = limitThrust(fabs(10000*currRef[1]));
 			motorPowerM3 = limitThrust(fabs(10000*currRef[2]));
@@ -168,7 +172,7 @@ static void mainControlTask(void* param)
 			motorsSetRatio(MOTOR_M4, motorPowerM4);
 		}
 
-		vDelay(M2T(250)); // is vDelay enough?
+		vTaskDelay(M2T(250)); // is vDelay enough?
 	}
 }
 
@@ -177,7 +181,8 @@ void referenceGeneratorInit(void)
 {
 	if(isInit3)
 		return;
-	for (int i=0; i<NREF; i++){
+	int i;
+	for (i = 0; i<NREF; i++){
 		referenceSignal[i] = 0;
 	}
 
@@ -203,22 +208,23 @@ static void referenceGeneratorTask(void* param)
 	{
 		if(xSemaphoreTake(gatekeeperRef, 2000))
 		{
-
-			for(int i = 0; i<NREF; i++)
+			int i;
+			for(i = 0; i<NREF; i++)
 			{
-				if (referenceSignal[i]< 2 && increase)
+				if (referenceSignal[i]< 1 && increase)
 				{
-					referenceSignal[i]+= 0.001;
+					referenceSignal[i] += 0.01;
 				}
 				else if (referenceSignal[i] >= 0)
 				{
-					referenceSignal[i]-= 0.001;
+					referenceSignal[i]-= 0.01;
 					increase = false;
 				}
 				else
 				{
 					increase = true;
 				}
+				//referenceSignal[i] = 1;
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
@@ -260,7 +266,7 @@ static void modeSwitchTask(void* param)
 			}
 			xSemaphoreGive(gatekeeperMode);
 		}
-		vTaskDelay(M2T(1000)); //increase later
+		vTaskDelay(M2T(5000)); //increase later
 	}
 }
 
@@ -341,11 +347,10 @@ static uint16_t limitThrust(int32_t value)
 	return limitUint16(value);
 }
 
-LOG_GROUP_START(tasks)
-LOG_ADD(LOG_INT8, mode, &mode)
-LOG_ADD(LOG_FLOAT, ref, &referenceSignal[0]) // does this work?
-
-LOG_GROUP_STOP(tasks)
+//LOG_GROUP_START(tasks)
+//LOG_ADD(LOG_INT8, mode, &mode)
+//LOG_ADD(LOG_FLOAT, ref, &referenceSignal[0]) // does this work?
+//LOG_GROUP_STOP(tasks)
 
 LOG_GROUP_START(stabilizer)
 LOG_ADD(LOG_FLOAT, roll, &eulerRollActual)
