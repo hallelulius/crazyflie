@@ -50,7 +50,7 @@
 #include "position_estimator.h"
 #include "position_controller.h"
 #include "altitude_hold.h"
-//#include "led.h"
+#include "led.h"
 
 /**
  * Defines in what divided update rate should the attitude
@@ -97,6 +97,68 @@ static void modeSwitchTask(void *arg);
 
 //new tasks
 //main control
+
+/* Untested code for LQR and LQI controller
+double controlSignal[] = {0, 0, 0, 0,};
+double integratorOutput[] = {0, 0, 0, 0, 0, 0, 0 ,0}; // store the integrator output
+
+/* LQR controller
+ * u = -K * x + Kr * r /
+double* LQRController(double* stateEst, double* refSignal){
+    int nCtrl = 4;
+    int nRefs = 8;
+    double K[nCtrl][nRefs] = {{1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8}};
+
+    double Kr[nCtrl][nRefs] ={{1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8}};
+    int i;
+    int j;
+
+    for (i = 0; i< nCtrl; i++){
+      for (i = 0; i<nRefs; j++){
+        controlSignal[i]+= -K[i][j] * stateEst[i] + Kr[i][j] * refSignal[i];
+      }
+    }
+
+    return controlSignal;
+}
+
+/* LQR controller
+ * u = -[K; Ki] * [x; x_i] + Kr * r /
+double* LQIController(double* stateEst, double* refSignal, double* output){
+    int nCtrl = 4;
+    int nRefs = 8;
+    double K[nCtrl][nRefs] = {{1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8},
+                              {1, 2 ,3, 4, 5, 6, 7, 8}};
+    double Ki[nCtrl][nRefs] = {{1, 2 ,3, 4, 5, 6, 7, 8},
+                               {1, 2 ,3, 4, 5, 6, 7, 8},
+                               {1, 2 ,3, 4, 5, 6, 7, 8},
+                               {1, 2 ,3, 4, 5, 6, 7, 8}};
+
+    int i;
+    int j;
+    double error;
+    for (i = 0; i< nCtrl; i++){
+      for (j = 0; j<nRefs; j++){
+        error = refSignal[j] - output[j];
+        integratorOutput[j] += error;
+        controlSignal[i]+= -K[i][j] * stateEst[i] + -Ki[i][j] * integratorOutput[j];
+      }
+    }
+
+    return controlSignal;
+}
+
+*/
+
+
 void mainControlInit(void)
 {
 	if(isInit2)
