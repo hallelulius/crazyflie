@@ -87,7 +87,7 @@ static uint16_t limitThrust(int32_t value);
 //global variable for the tasks
 static bool mode;
 const int NREF = 4;
-double referenceSignal[4];
+float referenceSignal[4];
 xSemaphoreHandle gatekeeperRef = 0;
 xSemaphoreHandle gatekeeperMode = 0;
 
@@ -98,34 +98,55 @@ static void modeSwitchTask(void *arg);
 //new tasks
 //main control
 
-/* Untested code for LQR and LQI controller
-double controlSignal[] = {0, 0, 0, 0,};
-double integratorOutput[] = {0, 0, 0, 0, 0, 0, 0 ,0}; // store the integrator output
+//Untested code for LQR and LQI controller
+
+float controlSignal[] = {0, 0, 0, 0};
+float integratorOutput[] = {0, 0, 0, 0, 0, 0}; // store the integrator output
+float dt = M2T(250);
+float rollDot = 0;
+float prevRoll = 0;
+float pitchDot = 0;
+float prevPitch = 0;
+float yawDot = 0;
+float prevYaw = 0;
+float estimatedState[] = {0,0,0,0,0,0};
+
 
 /* LQR controller
- * u = -K * x + Kr * r /
-double* LQRController(double* stateEst, double* refSignal){
-    int nCtrl = 4;
-    int nRefs = 8;
-    double K[nCtrl][nRefs] = {{1, 2 ,3, 4, 5, 6, 7, 8},
-                              {1, 2 ,3, 4, 5, 6, 7, 8},
-                              {1, 2 ,3, 4, 5, 6, 7, 8},
-                              {1, 2 ,3, 4, 5, 6, 7, 8}};
+ * u = -K * x + Kr * r */
+void LQRController(float stateEst[], float refSignal[]){
+	int nCtrl = 4;
+	int nRefs = 6;
+	int a = 100;
+	int b = 10;
+	int c = 0.01;
+	int d= 0.1;
+	float K[4][6] = {{-a, 	-b  ,	a, 		b, 	c, 	d},
+					{-a,	-b ,	-a, 	-b, -c, -d},
+					{a, 	b ,		-a, 	-b, c, d},
+					{a, 	b  ,	a, 		b, -c, -d}};
 
-    double Kr[nCtrl][nRefs] ={{1, 2 ,3, 4, 5, 6, 7, 8},
-                              {1, 2 ,3, 4, 5, 6, 7, 8},
-                              {1, 2 ,3, 4, 5, 6, 7, 8},
-                              {1, 2 ,3, 4, 5, 6, 7, 8}};
-    int i;
-    int j;
+	float Kr[4][8] ={{1, 2 ,3, 4, 5, 6, 7, 8},
+			{1, 2 ,3, 4, 5, 6, 7, 8},
+			{1, 2 ,3, 4, 5, 6, 7, 8},
+			{1, 2 ,3, 4, 5, 6, 7, 8}};
+	int i;
+	int j;
 
-    for (i = 0; i< nCtrl; i++){
-      for (i = 0; i<nRefs; j++){
-        controlSignal[i]+= -K[i][j] * stateEst[i] + Kr[i][j] * refSignal[i];
-      }
-    }
-
-    return controlSignal;
+	for (i = 0; i< nCtrl; i++){
+		controlSignal[i] = 0;
+		for (j = 0; j<nRefs; j++){
+			controlSignal[i]+= -K[i][j] * stateEst[j]; //Kr[i][j] * refSignal[i];
+			//controlSignal[i] = 4000;
+		}
+		controlSignal[i] *= 10;
+		if(controlSignal[i]>10000.0){
+			controlSignal[i] = 10000.0;
+		}
+		if (controlSignal[i] < 0){
+			controlSignal[i] = 0;
+		}
+	}
 }
 
 /* LQR controller
@@ -156,7 +177,7 @@ double* LQIController(double* stateEst, double* refSignal, double* output){
     return controlSignal;
 }
 
-*/
+ */
 
 
 void mainControlInit(void)
@@ -185,7 +206,7 @@ static void mainControlTask(void* param)
 {
 	//Wait for the system to be fully started
 	int currMode = 0;
-	double currRef[NREF];
+	float currRef[NREF];
 	systemWaitStart();
 
 	while(1)
@@ -213,21 +234,44 @@ static void mainControlTask(void* param)
 		{
 			//show error message
 		}
-		// do more control stuff
-		if (currMode == 1){
-			motorPowerM1 = limitThrust(fabs(10000*currRef[0]));
-			motorPowerM2 = limitThrust(fabs(10000*currRef[1]));
-			motorPowerM3 = limitThrust(fabs(10000*currRef[2]));
-			motorPowerM4 = limitThrust(fabs(10000*currRef[3]));
-		}
-		else
-		{
-			motorPowerM1 = limitThrust(0);
-			motorPowerM2 = limitThrust(0);
-			motorPowerM3 = limitThrust(0);
-			motorPowerM4 = limitThrust(0);
-		}
+
+
+		//imu9Read(&gyro, &acc, &mag);
+
 		if (imu6IsCalibrated()){
+			//sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
+			//sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
+			rollDot = (prevRoll - eulerRollActual)/dt;
+			pitchDot = (prevPitch - eulerPitchActual)/dt;
+			yawDot = (prevYaw - eulerYawActual)/dt;
+			estimatedState[0] = eulerRollActual;
+			estimatedState[1] = rollDot;
+			estimatedState[2] = eulerPitchActual;
+			estimatedState[3] = pitchDot;
+			estimatedState[4] = eulerYawActual;
+			estimatedState[5] = yawDot;
+
+			LQRController(estimatedState, currRef);
+			prevRoll = eulerRollActual;
+			prevPitch = eulerPitchActual;
+			prevYaw = eulerYawActual;
+
+			// do more control stuff
+			if (currMode == 1 || currMode == 0){
+
+				motorPowerM1 = limitThrust(fabs(controlSignal[0]));
+				motorPowerM2 = limitThrust(fabs(controlSignal[1]));
+				motorPowerM3 = limitThrust(fabs(controlSignal[2]));
+				motorPowerM4 = limitThrust(fabs(controlSignal[3]));
+			}
+			else
+			{
+				motorPowerM1 = limitThrust(0);
+				motorPowerM2 = limitThrust(0);
+				motorPowerM3 = limitThrust(0);
+				motorPowerM4 = limitThrust(0);
+			}
+
 			motorsSetRatio(MOTOR_M1, motorPowerM1);
 			motorsSetRatio(MOTOR_M2, motorPowerM2);
 			motorsSetRatio(MOTOR_M3, motorPowerM3);
@@ -273,6 +317,7 @@ static void referenceGeneratorTask(void* param)
 			int i;
 			for(i = 0; i<NREF; i++)
 			{
+				/*
 				if (referenceSignal[i]< 1 && increase)
 				{
 					referenceSignal[i] += 0.01;
@@ -287,6 +332,9 @@ static void referenceGeneratorTask(void* param)
 					increase = true;
 				}
 				//referenceSignal[i] = 1;
+				 *
+				 */
+				referenceSignal[i] = 0;
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
@@ -358,7 +406,6 @@ static void stabilizerTask(void* param)
 			{
 				sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
 				sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
-
 				// Set motors depending on the euler angles
 				//motorPowerM1 = limitThrust(fabs(32000*eulerYawActual/180.0));
 				//motorPowerM2 = limitThrust(fabs(32000*eulerPitchActual/180.0));
