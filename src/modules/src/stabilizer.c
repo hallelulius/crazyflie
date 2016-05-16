@@ -121,15 +121,15 @@ void LQRController(float stateEst[], float refSignal[]){
 	int b = 10;
 	int c = 0.01;
 	int d= 0.1;
-	float K[4][6] = {{-a, 	-b  ,	a, 		b, 	c, 	d},
-					{-a,	-b ,	-a, 	-b, -c, -d},
-					{a, 	b ,		-a, 	-b, c, d},
-					{a, 	b  ,	a, 		b, -c, -d}};
+	float K[4][6] = {{-a, -b,  a,  b,  c,  d},
+					 {-a, -b, -a, -b, -c, -d},
+					 { a,  b, -a, -b,  c,  d},
+					 { a,  b,  a,  b, -c, -d}};
 
-	float Kr[4][8] ={{1, 2 ,3, 4, 5, 6, 7, 8},
-			{1, 2 ,3, 4, 5, 6, 7, 8},
-			{1, 2 ,3, 4, 5, 6, 7, 8},
-			{1, 2 ,3, 4, 5, 6, 7, 8}};
+	//float Kr[4][8] ={{1, 2 ,3, 4, 5, 6, 7, 8},
+	//		{1, 2 ,3, 4, 5, 6, 7, 8},
+	//		{1, 2 ,3, 4, 5, 6, 7, 8},
+	//		{1, 2 ,3, 4, 5, 6, 7, 8}};
 	int i;
 	int j;
 
@@ -137,7 +137,6 @@ void LQRController(float stateEst[], float refSignal[]){
 		controlSignal[i] = 0;
 		for (j = 0; j<nRefs; j++){
 			controlSignal[i]+= -K[i][j] * stateEst[j]; //Kr[i][j] * refSignal[i];
-			//controlSignal[i] = 4000;
 		}
 		controlSignal[i] *= 10;
 		if(controlSignal[i]>10000.0){
@@ -170,7 +169,7 @@ double* LQIController(double* stateEst, double* refSignal, double* output){
       for (j = 0; j<nRefs; j++){
         error = refSignal[j] - output[j];
         integratorOutput[j] += error;
-        controlSignal[i]+= -K[i][j] * stateEst[i] + -Ki[i][j] * integratorOutput[j];
+        controlSignal[i]+= -K[i][j] * stateEst[j] + -Ki[i][j] * integratorOutput[j];
       }
     }
 
@@ -204,23 +203,29 @@ bool mainControlTest(void)
 
 static void mainControlTask(void* param)
 {
-	//Wait for the system to be fully started
+	uint32_t attitudeCounter = 0;
+	uint32_t lastWakeTime;
 	int currMode = 0;
 	float currRef[NREF];
+
+	vTaskSetApplicationTaskTag(0, (void*)TASK_STABILIZER_ID_NBR);
+
+	//Wait for the system to be fully started to start stabilization loop
+
 	systemWaitStart();
+
+	lastWakeTime = xTaskGetTickCount ();
 
 	while(1)
 	{
+		vTaskDelayUntil(&lastWakeTime, F2T(IMU_UPDATE_FREQ)); // 500Hz
+
+		// get current mode and reference signal
 		if (xSemaphoreTake(gatekeeperMode, 1000))
 		{
 			currMode = mode;
 			xSemaphoreGive(gatekeeperMode);
 		}
-		else
-		{
-			// error message here
-		}
-
 		if (xSemaphoreTake(gatekeeperRef, 1000))
 		{
 			int i;
@@ -230,57 +235,59 @@ static void mainControlTask(void* param)
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
-		else
+
+		// Magnetometer not yet used more then for logging.
+		imu9Read(&gyro, &acc, &mag);
+
+		if (imu6IsCalibrated())
 		{
-			//show error message
-		}
-
-
-		//imu9Read(&gyro, &acc, &mag);
-
-		if (imu6IsCalibrated()){
-			//sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
-			//sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
-			rollDot = (prevRoll - eulerRollActual)/dt;
-			pitchDot = (prevPitch - eulerPitchActual)/dt;
-			yawDot = (prevYaw - eulerYawActual)/dt;
-			estimatedState[0] = eulerRollActual;
-			estimatedState[1] = rollDot;
-			estimatedState[2] = eulerPitchActual;
-			estimatedState[3] = pitchDot;
-			estimatedState[4] = eulerYawActual;
-			estimatedState[5] = yawDot;
-
-			LQRController(estimatedState, currRef);
-			prevRoll = eulerRollActual;
-			prevPitch = eulerPitchActual;
-			prevYaw = eulerYawActual;
-
-			// do more control stuff
-			if (currMode == 1 || currMode == 0){
-
-				motorPowerM1 = limitThrust(fabs(controlSignal[0]));
-				motorPowerM2 = limitThrust(fabs(controlSignal[1]));
-				motorPowerM3 = limitThrust(fabs(controlSignal[2]));
-				motorPowerM4 = limitThrust(fabs(controlSignal[3]));
-			}
-			else
+			// 250HZ
+			if (++attitudeCounter >= ATTITUDE_UPDATE_RATE_DIVIDER)
 			{
-				motorPowerM1 = limitThrust(0);
-				motorPowerM2 = limitThrust(0);
-				motorPowerM3 = limitThrust(0);
-				motorPowerM4 = limitThrust(0);
+				sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
+				sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
+				attitudeCounter = 0;
+
+				rollDot = (prevRoll - eulerRollActual)/dt;
+				pitchDot = (prevPitch - eulerPitchActual)/dt;
+				yawDot = (prevYaw - eulerYawActual)/dt;
+				estimatedState[0] = eulerRollActual;
+				estimatedState[1] = rollDot;
+				estimatedState[2] = eulerPitchActual;
+				estimatedState[3] = pitchDot;
+				estimatedState[4] = eulerYawActual;
+				estimatedState[5] = yawDot;
+
+				LQRController(estimatedState, currRef);
+				prevRoll = eulerRollActual;
+				prevPitch = eulerPitchActual;
+				prevYaw = eulerYawActual;
+
+				// do more control stuff
+				if (currMode == 1 || currMode == 0){
+
+					motorPowerM1 = limitThrust(fabs(controlSignal[0]));
+					motorPowerM2 = limitThrust(fabs(controlSignal[1]));
+					motorPowerM3 = limitThrust(fabs(controlSignal[2]));
+					motorPowerM4 = limitThrust(fabs(controlSignal[3]));
+				}
+				else
+				{
+					motorPowerM1 = limitThrust(0);
+					motorPowerM2 = limitThrust(0);
+					motorPowerM3 = limitThrust(0);
+					motorPowerM4 = limitThrust(0);
+				}
+
+				motorsSetRatio(MOTOR_M1, motorPowerM1);
+				motorsSetRatio(MOTOR_M2, motorPowerM2);
+				motorsSetRatio(MOTOR_M3, motorPowerM3);
+				motorsSetRatio(MOTOR_M4, motorPowerM4);
 			}
-
-			motorsSetRatio(MOTOR_M1, motorPowerM1);
-			motorsSetRatio(MOTOR_M2, motorPowerM2);
-			motorsSetRatio(MOTOR_M3, motorPowerM3);
-			motorsSetRatio(MOTOR_M4, motorPowerM4);
 		}
-
-		vTaskDelay(M2T(250)); // is vDelay enough?
 	}
 }
+
 
 // reference generator
 void referenceGeneratorInit(void)
@@ -292,7 +299,7 @@ void referenceGeneratorInit(void)
 		referenceSignal[i] = 0;
 	}
 
-	xTaskCreate(referenceGeneratorTask, REF_GENERATOR_TASK_STACKSIZE,
+	xTaskCreate(referenceGeneratorTask, REF_GENERATOR_TASK_NAME,
 			REF_GENERATOR_TASK_STACKSIZE, NULL, REF_GENERATOR_TASK_PRI, NULL);
 
 	isInit3 = true;
@@ -317,7 +324,7 @@ static void referenceGeneratorTask(void* param)
 			int i;
 			for(i = 0; i<NREF; i++)
 			{
-				/*
+
 				if (referenceSignal[i]< 1 && increase)
 				{
 					referenceSignal[i] += 0.01;
@@ -331,10 +338,6 @@ static void referenceGeneratorTask(void* param)
 				{
 					increase = true;
 				}
-				//referenceSignal[i] = 1;
-				 *
-				 */
-				referenceSignal[i] = 0;
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
@@ -382,7 +385,7 @@ static void modeSwitchTask(void* param)
 
 static void stabilizerTask(void* param)
 {
-	uint32_t attitudeCounter = 0;
+	//uint32_t attitudeCounter = 0;
 	uint32_t lastWakeTime;
 
 	vTaskSetApplicationTaskTag(0, (void*)TASK_STABILIZER_ID_NBR);
@@ -397,28 +400,28 @@ static void stabilizerTask(void* param)
 		vTaskDelayUntil(&lastWakeTime, F2T(IMU_UPDATE_FREQ)); // 500Hz
 
 		// Magnetometer not yet used more then for logging.
-		imu9Read(&gyro, &acc, &mag);
+		//imu9Read(&gyro, &acc, &mag);
 
 		if (imu6IsCalibrated())
 		{
 			// 250HZ
-			if (++attitudeCounter >= ATTITUDE_UPDATE_RATE_DIVIDER)
-			{
-				sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
-				sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
-				// Set motors depending on the euler angles
-				//motorPowerM1 = limitThrust(fabs(32000*eulerYawActual/180.0));
-				//motorPowerM2 = limitThrust(fabs(32000*eulerPitchActual/180.0));
-				//motorPowerM3 = limitThrust(fabs(32000*eulerRollActual/180.0));
-				//motorPowerM4 = limitThrust(fabs(32000*eulerYawActual/180.0));
+			//if (++attitudeCounter >= ATTITUDE_UPDATE_RATE_DIVIDER)
+			//{
+			//sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z, acc.x, acc.y, acc.z, ATTITUDE_UPDATE_DT);
+			//sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
+			// Set motors depending on the euler angles
+			//motorPowerM1 = limitThrust(fabs(32000*eulerYawActual/180.0));
+			//motorPowerM2 = limitThrust(fabs(32000*eulerPitchActual/180.0));
+			//motorPowerM3 = limitThrust(fabs(32000*eulerRollActual/180.0));
+			//motorPowerM4 = limitThrust(fabs(32000*eulerYawActual/180.0));
 
-				//motorsSetRatio(MOTOR_M1, motorPowerM1);
-				//motorsSetRatio(MOTOR_M2, motorPowerM2);
-				//motorsSetRatio(MOTOR_M3, motorPowerM3);
-				//motorsSetRatio(MOTOR_M4, motorPowerM4);
+			//motorsSetRatio(MOTOR_M1, motorPowerM1);
+			//motorsSetRatio(MOTOR_M2, motorPowerM2);
+			//motorsSetRatio(MOTOR_M3, motorPowerM3);
+			//motorsSetRatio(MOTOR_M4, motorPowerM4);
 
-				attitudeCounter = 0;
-			}
+			//attitudeCounter = 0;
+			//}
 		}
 	}
 }
