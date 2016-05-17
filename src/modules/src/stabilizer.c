@@ -119,11 +119,14 @@ float toRad(float degrees){
 float thrustToPWM(float controlSignal){
 	// from polyfit-280.5110  572.9469    5.6284
 	// tweaked -250.5110*T.^2 + 572.9469 * T
-	double a = -250.511;
-	double b = 572.6469;
-	double c = 0;
 
-	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c) * 256;
+	// from table + polyfit   -7.6280e+04 1.4921e+05 1.1357e+03 no need to multiply with 256
+
+	double a = -7.6280e4;
+	double b = 1.4921e5;
+	double c = 1.1357e3;
+
+	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c);
 	return pwm;
 }
 
