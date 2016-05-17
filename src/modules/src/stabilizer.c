@@ -84,45 +84,51 @@ static bool isInit4;
 
 static uint16_t limitThrust(int32_t value);
 
-//global variable for the tasks
+//global variables for the tasks
 static bool mode;
 const int NREF = 4;
 float referenceSignal[4];
 xSemaphoreHandle gatekeeperRef = 0;
 xSemaphoreHandle gatekeeperMode = 0;
-
 static void mainControlTask(void *arg);
 static void referenceGeneratorTask(void *arg);
 static void modeSwitchTask(void *arg);
 
-//new tasks
-//main control
 
-//Untested code for LQR and LQI controller
-
+// global variables for the control
 float controlSignal[] = {0, 0, 0, 0};
 float integratorOutput[] = {0, 0, 0, 0, 0, 0}; // store the integrator output
-float dt = M2T(250);
+float estimatedState[] = {0, 0, 0, 0, 0, 0};
+float dt = ATTITUDE_UPDATE_DT; // 1/500
 float rollDot = 0;
 float prevRoll = 0;
 float pitchDot = 0;
 float prevPitch = 0;
 float yawDot = 0;
 float prevYaw = 0;
-float estimatedState[] = {0,0,0,0,0,0};
-// from modelica
+
+
+// model constants
 float const m = 0.027;
 float const g = 9.8;
 
-
-/* LQR controller
- * u = -K * x + Kr * r */
+float toRad(float degrees){
+	return degrees * ((float) M_PI) / 180;
+}
 
 float thrustToPWM(float controlSignal){
-	float pwm = ((controlSignal + 0.099) * 1000.0/140.0) * 256;
+	// from polyfit-280.5110  572.9469    5.6284
+	// tweaked -250.5110*T.^2 + 572.9469 * T
+	double a = -250.511;
+	double b = 572.6469;
+	double c = 0;
+
+	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c) * 256;
 	return pwm;
 }
 
+/* LQR controller
+ * u = -K * x + Kr * r */
 void LQRController(float stateEst[], float refSignal[]){
 	int nCtrl = 4;
 	int nRefs = 6;
@@ -131,9 +137,9 @@ void LQRController(float stateEst[], float refSignal[]){
 	int c = 0.0158;
 	int d= 0.0158;
 	float K[4][6] = {{-a, -b,  a,  b,  c,  d},
-			{-a, -b, -a, -b, -c, -d},
-			{ a,  b, -a, -b,  c,  d},
-			{ a,  b,  a,  b, -c, -d}};
+					 {-a, -b, -a, -b, -c, -d},
+					 { a,  b, -a, -b,  c,  d},
+					 { a,  b,  a,  b, -c, -d}};
 
 	//float Kr[4][6] = {{-a, -b,  a,  b,  c,  d},
 	//			{-a, -b, -a, -b, -c, -d},
@@ -145,7 +151,7 @@ void LQRController(float stateEst[], float refSignal[]){
 	for (i = 0; i< nCtrl; i++){
 		controlSignal[i] = 0;
 		for (j = 0; j<nRefs; j++){
-			controlSignal[i]+= -K[i][j] * 0.01 * stateEst[j] + 20 * refSignal[i];
+			controlSignal[i]+= -K[i][j] * stateEst[j] + refSignal[i];
 		}
 		controlSignal[i] = thrustToPWM(controlSignal[i]);
 		if(controlSignal[i]>40000.0){
@@ -229,22 +235,6 @@ static void mainControlTask(void* param)
 	{
 		vTaskDelayUntil(&lastWakeTime, F2T(IMU_UPDATE_FREQ)); // 500Hz
 
-		// get current mode and reference signal
-		if (xSemaphoreTake(gatekeeperMode, 1000))
-		{
-			currMode = mode;
-			xSemaphoreGive(gatekeeperMode);
-		}
-		if (xSemaphoreTake(gatekeeperRef, 1000))
-		{
-			int i;
-			for (i = 0; i<NREF; i++)
-			{
-				currRef[i] = referenceSignal[i];
-			}
-			xSemaphoreGive(gatekeeperRef);
-		}
-
 		// Magnetometer not yet used more then for logging.
 		imu9Read(&gyro, &acc, &mag);
 
@@ -257,20 +247,20 @@ static void mainControlTask(void* param)
 				sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
 				attitudeCounter = 0;
 
-				rollDot = (prevRoll - eulerRollActual)/dt;
-				pitchDot = (prevPitch - eulerPitchActual)/dt;
-				yawDot = (prevYaw - eulerYawActual)/dt;
-				estimatedState[0] = eulerRollActual;
+				rollDot = (prevRoll - toRad(eulerRollActual))/dt;
+				pitchDot = (prevPitch - toRad(eulerPitchActual))/dt;
+				yawDot = (prevYaw - toRad(eulerYawActual))/dt;
+				estimatedState[0] = toRad(eulerRollActual);
 				estimatedState[1] = rollDot;
-				estimatedState[2] = eulerPitchActual;
+				estimatedState[2] = toRad(eulerPitchActual);
 				estimatedState[3] = pitchDot;
-				estimatedState[4] = eulerYawActual;
+				estimatedState[4] = toRad(eulerYawActual);
 				estimatedState[5] = yawDot;
 
 				LQRController(estimatedState, currRef);
-				prevRoll = eulerRollActual;
-				prevPitch = eulerPitchActual;
-				prevYaw = eulerYawActual;
+				prevRoll = estimatedState[0];
+				prevPitch = estimatedState[2];
+				prevYaw = estimatedState[4];
 
 				// do more control stuff
 				if (currMode == 1 || currMode == 0){
@@ -293,6 +283,22 @@ static void mainControlTask(void* param)
 				motorsSetRatio(MOTOR_M3, motorPowerM3);
 				motorsSetRatio(MOTOR_M4, motorPowerM4);
 			}
+		}
+
+		// get current mode and reference signal
+		if (xSemaphoreTake(gatekeeperMode, 100))
+		{
+			currMode = mode;
+			xSemaphoreGive(gatekeeperMode);
+		}
+		if (xSemaphoreTake(gatekeeperRef, 100))
+		{
+			int i;
+			for (i = 0; i<NREF; i++)
+			{
+				currRef[i] = referenceSignal[i];
+			}
+			xSemaphoreGive(gatekeeperRef);
 		}
 	}
 }
@@ -323,7 +329,7 @@ bool referenceGeneratorTest(void)
 
 static void referenceGeneratorTask(void* param)
 {
-	bool increase = true;
+	//bool increase = true;
 	systemWaitStart();
 
 	while(1)
@@ -335,7 +341,6 @@ static void referenceGeneratorTask(void* param)
 			referenceSignal[1] = m*g/4;
 			referenceSignal[2] = m*g/4;
 			referenceSignal[3] = m*g/4;
-
 
 			/*
 			int i;

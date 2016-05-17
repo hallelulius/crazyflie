@@ -82,7 +82,7 @@
 #define PROXIMITY_TASK_PRI      0
 #define PM_TASK_PRI             0
 // new tasks ,what priority to use?
-#define MAIN_CONTROL_TASK_PRI	3
+#define MAIN_CONTROL_TASK_PRI	4
 #define REF_GENERATOR_TASK_PRI	3
 #define MODE_SWITCH_TASK_PRI	0
 
