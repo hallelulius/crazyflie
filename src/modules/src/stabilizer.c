@@ -110,37 +110,46 @@ float prevPitch = 0;
 float yawDot = 0;
 float prevYaw = 0;
 float estimatedState[] = {0,0,0,0,0,0};
+// from modelica
+float const m = 0.027;
+float const g = 9.8;
 
 
 /* LQR controller
  * u = -K * x + Kr * r */
+
+float thrustToPWM(float controlSignal){
+	float pwm = ((controlSignal + 0.099) * 1000.0/140.0) * 256;
+	return pwm;
+}
+
 void LQRController(float stateEst[], float refSignal[]){
 	int nCtrl = 4;
 	int nRefs = 6;
-	int a = 100;
-	int b = 10;
-	int c = 0.01;
-	int d= 0.1;
+	int a = 15.8114;
+	int b = 5.0002;
+	int c = 0.0158;
+	int d= 0.0158;
 	float K[4][6] = {{-a, -b,  a,  b,  c,  d},
-					 {-a, -b, -a, -b, -c, -d},
-					 { a,  b, -a, -b,  c,  d},
-					 { a,  b,  a,  b, -c, -d}};
+			{-a, -b, -a, -b, -c, -d},
+			{ a,  b, -a, -b,  c,  d},
+			{ a,  b,  a,  b, -c, -d}};
 
-	//float Kr[4][8] ={{1, 2 ,3, 4, 5, 6, 7, 8},
-	//		{1, 2 ,3, 4, 5, 6, 7, 8},
-	//		{1, 2 ,3, 4, 5, 6, 7, 8},
-	//		{1, 2 ,3, 4, 5, 6, 7, 8}};
+	//float Kr[4][6] = {{-a, -b,  a,  b,  c,  d},
+	//			{-a, -b, -a, -b, -c, -d},
+	//			{ a,  b, -a, -b,  c,  d},
+	//			{ a,  b,  a,  b, -c, -d}};
 	int i;
 	int j;
 
 	for (i = 0; i< nCtrl; i++){
 		controlSignal[i] = 0;
 		for (j = 0; j<nRefs; j++){
-			controlSignal[i]+= -K[i][j] * stateEst[j]; //Kr[i][j] * refSignal[i];
+			controlSignal[i]+= -K[i][j] * 0.01 * stateEst[j] + 20 * refSignal[i];
 		}
-		controlSignal[i] *= 10;
-		if(controlSignal[i]>10000.0){
-			controlSignal[i] = 10000.0;
+		controlSignal[i] = thrustToPWM(controlSignal[i]);
+		if(controlSignal[i]>40000.0){
+			controlSignal[i] = 40000.0;
 		}
 		if (controlSignal[i] < 0){
 			controlSignal[i] = 0;
@@ -321,7 +330,16 @@ static void referenceGeneratorTask(void* param)
 	{
 		if(xSemaphoreTake(gatekeeperRef, 2000))
 		{
+
+			referenceSignal[0] = m*g/4;
+			referenceSignal[1] = m*g/4;
+			referenceSignal[2] = m*g/4;
+			referenceSignal[3] = m*g/4;
+
+
+			/*
 			int i;
+
 			for(i = 0; i<NREF; i++)
 			{
 
@@ -339,6 +357,7 @@ static void referenceGeneratorTask(void* param)
 					increase = true;
 				}
 			}
+			 */
 			xSemaphoreGive(gatekeeperRef);
 		}
 		vTaskDelay(M2T(250)); //increase later
