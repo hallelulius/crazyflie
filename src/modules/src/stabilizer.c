@@ -97,20 +97,35 @@ static void modeSwitchTask(void *arg);
 
 // global variables for the control
 float controlSignal[] = {0, 0, 0, 0};
+float controlDebugThrust[] = {0, 0, 0, 0};
+float controlDebugPWM[] = {0, 0, 0, 0};
 float integratorOutput[] = {0, 0, 0, 0, 0, 0}; // store the integrator output
 float estimatedState[] = {0, 0, 0, 0, 0, 0};
 float dt = ATTITUDE_UPDATE_DT; // 1/500
+
 float rollDot = 0;
-float prevRoll = 0;
 float pitchDot = 0;
-float prevPitch = 0;
 float yawDot = 0;
+
+float prevRoll = 0;
+float prevPitch = 0;
 float prevYaw = 0;
+
+float prevRollDot = 0;
+float prevPitchDot = 0;
+float prevYawDot = 0;
+
 float paramG = 0;
+float paramD = 0;
+float paramA = 0.1;
+float paramR = 0;
+
 
 // model constants
 float const m = 0.027;
 float const g = 9.8;
+
+// gain 0.002 ref 30 d 0.5 alpha 0.5
 
 float toRad(float degrees){
 	return degrees * ((float) M_PI) / 180;
@@ -122,11 +137,11 @@ float thrustToPWM(float controlSignal){
 
 	// from table + polyfit   -7.6280e+04 1.4921e+05 1.1357e+03 no need to multiply with 256
 
-	double a = -7.6280e4;
-	double b = 1.4921e5;
+	double a = -1.2205e6;
+	double b = 5.9683e5;
 	double c = 1.1357e3;
-
-	float pwm = paramG*(a * pow(controlSignal,2) + b * controlSignal + c);
+	if (controlSignal > 0.15) controlSignal = 0.15;
+	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c);
 	return pwm;
 }
 
@@ -155,11 +170,10 @@ void LQRController(float stateEst[], float refSignal[]){
 		controlSignal[i] = 0;
 		for (j = 0; j<nRefs; j++){
 			controlSignal[i]+= -K[i][j] * stateEst[j] + refSignal[i];
+			controlDebugThrust[i] = controlSignal[i];
 		}
-		controlSignal[i] = thrustToPWM(controlSignal[i]);
-		if(controlSignal[i]>40000.0){
-			controlSignal[i] = 40000.0;
-		}
+		controlSignal[i] = thrustToPWM(controlSignal[i]*paramG);
+		controlDebugPWM[i] = controlSignal[i];
 		if (controlSignal[i] < 0){
 			controlSignal[i] = 0;
 		}
@@ -250,20 +264,25 @@ static void mainControlTask(void* param)
 				sensfusion6GetEulerRPY(&eulerRollActual, &eulerPitchActual, &eulerYawActual);
 				attitudeCounter = 0;
 
-				rollDot = (prevRoll - toRad(eulerRollActual))/dt;
-				pitchDot = (prevPitch - toRad(eulerPitchActual))/dt;
-				yawDot = (prevYaw - toRad(eulerYawActual))/dt;
+				rollDot = (1-paramA) * prevRollDot + paramA*(toRad(eulerRollActual) - prevRoll)/dt;
+				pitchDot = (1-paramA) * prevPitchDot + paramA * (toRad(eulerPitchActual) - prevPitch)/dt;
+				yawDot = (1-paramA) * prevYawDot + paramA*(toRad(eulerPitchActual) - prevYaw)/dt;
 				estimatedState[0] = toRad(eulerRollActual);
-				estimatedState[1] = rollDot;
+				estimatedState[1] = paramD * rollDot;
 				estimatedState[2] = toRad(eulerPitchActual);
-				estimatedState[3] = pitchDot;
+				estimatedState[3] = paramD * pitchDot;
 				estimatedState[4] = toRad(eulerYawActual);
-				estimatedState[5] = yawDot;
+				estimatedState[5] = paramD * yawDot;
 
 				LQRController(estimatedState, currRef);
+
 				prevRoll = estimatedState[0];
 				prevPitch = estimatedState[2];
 				prevYaw = estimatedState[4];
+
+				prevRollDot = estimatedState[1];
+				prevPitchDot = estimatedState[3];
+				prevYawDot = estimatedState[5];
 
 				// do more control stuff
 				if (currMode == 1 || currMode == 0){
@@ -340,15 +359,11 @@ static void referenceGeneratorTask(void* param)
 		if(xSemaphoreTake(gatekeeperRef, 2000))
 		{
 
-			referenceSignal[0] = m*g/4;
-			referenceSignal[1] = m*g/4;
-			referenceSignal[2] = m*g/4;
-			referenceSignal[3] = m*g/4;
+			referenceSignal[0] = paramR * m*g/4;
+			referenceSignal[1] = paramR * m*g/4;
+			referenceSignal[2] = paramR * m*g/4;
+			referenceSignal[3] = paramR * m*g/4;
 
-			referenceSignal[0] = 0;
-			referenceSignal[1] = 0;
-			referenceSignal[2] = 0;
-			referenceSignal[3] = 0;
 
 			/*
 			int i;
@@ -491,6 +506,13 @@ static uint16_t limitThrust(int32_t value)
 	return limitUint16(value);
 }
 
+PARAM_GROUP_START(params)
+PARAM_ADD(PARAM_FLOAT, gain, &paramG)
+PARAM_ADD(PARAM_FLOAT, alpha, &paramA)
+PARAM_ADD(PARAM_FLOAT, derv, &paramD)
+PARAM_ADD(PARAM_FLOAT, ref, &paramR)
+PARAM_GROUP_STOP(params)
+
 LOG_GROUP_START(debugdata)
 //LOG_ADD(LOG_INT8, mode, &mode)
 LOG_ADD(LOG_FLOAT, roll, &estimatedState[0]) // does this work?
@@ -500,6 +522,14 @@ LOG_ADD(LOG_FLOAT, rollDot, &estimatedState[1]) // does this work?
 LOG_ADD(LOG_FLOAT, pitchDot, &estimatedState[3])
 LOG_ADD(LOG_FLOAT, yawDot, &estimatedState[5])
 LOG_ADD(LOG_FLOAT, gain, &paramG)
+LOG_ADD(LOG_FLOAT, controlT1, &controlDebugThrust[0])
+LOG_ADD(LOG_FLOAT, controlT2, &controlDebugThrust[1])
+LOG_ADD(LOG_FLOAT, controlT3, &controlDebugThrust[2])
+LOG_ADD(LOG_FLOAT, controlT4, &controlDebugThrust[3])
+LOG_ADD(LOG_FLOAT, controlTPWM1, &controlDebugPWM[0])
+LOG_ADD(LOG_FLOAT, controlTPWM2, &controlDebugPWM[1])
+LOG_ADD(LOG_FLOAT, controlTPWM3, &controlDebugPWM[2])
+LOG_ADD(LOG_FLOAT, controlTPWM4, &controlDebugPWM[3])
 LOG_GROUP_STOP(debugdata)
 
 LOG_GROUP_START(stabilizer)
