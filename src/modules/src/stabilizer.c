@@ -106,7 +106,7 @@ float pitchDot = 0;
 float prevPitch = 0;
 float yawDot = 0;
 float prevYaw = 0;
-
+float paramG = 0;
 
 // model constants
 float const m = 0.027;
@@ -126,7 +126,7 @@ float thrustToPWM(float controlSignal){
 	double b = 1.4921e5;
 	double c = 1.1357e3;
 
-	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c);
+	float pwm = paramG*(a * pow(controlSignal,2) + b * controlSignal + c);
 	return pwm;
 }
 
@@ -345,6 +345,11 @@ static void referenceGeneratorTask(void* param)
 			referenceSignal[2] = m*g/4;
 			referenceSignal[3] = m*g/4;
 
+			referenceSignal[0] = 0;
+			referenceSignal[1] = 0;
+			referenceSignal[2] = 0;
+			referenceSignal[3] = 0;
+
 			/*
 			int i;
 
@@ -486,13 +491,20 @@ static uint16_t limitThrust(int32_t value)
 	return limitUint16(value);
 }
 
-//LOG_GROUP_START(tasks)
+LOG_GROUP_START(debugdata)
 //LOG_ADD(LOG_INT8, mode, &mode)
-//LOG_ADD(LOG_FLOAT, ref, &referenceSignal[0]) // does this work?
-//LOG_GROUP_STOP(tasks)
+LOG_ADD(LOG_FLOAT, roll, &estimatedState[0]) // does this work?
+LOG_ADD(LOG_FLOAT, pitch, &estimatedState[2])
+LOG_ADD(LOG_FLOAT, yaw, &estimatedState[4])
+LOG_ADD(LOG_FLOAT, rollDot, &estimatedState[1]) // does this work?
+LOG_ADD(LOG_FLOAT, pitchDot, &estimatedState[3])
+LOG_ADD(LOG_FLOAT, yawDot, &estimatedState[5])
+LOG_ADD(LOG_FLOAT, gain, &paramG)
+LOG_GROUP_STOP(debugdata)
 
 LOG_GROUP_START(stabilizer)
 LOG_ADD(LOG_FLOAT, roll, &eulerRollActual)
+LOG_ADD(LOG_FLOAT, pitch, &estimatedState[2])
 LOG_ADD(LOG_FLOAT, pitch, &eulerPitchActual)
 LOG_ADD(LOG_FLOAT, yaw, &eulerYawActual)
 LOG_ADD(LOG_UINT16, thrust, &actuatorThrust)
