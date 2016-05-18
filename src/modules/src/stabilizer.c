@@ -116,8 +116,8 @@ float prevPitchDot = 0;
 float prevYawDot = 0;
 
 float paramG = 0;
-float paramD = 0;
-float paramA = 0.1;
+float paramD = 1;
+float paramA = 0.5;
 float paramR = 0;
 
 
@@ -125,7 +125,7 @@ float paramR = 0;
 float const m = 0.027;
 float const g = 9.8;
 
-// gain 0.002 ref 30 d 0.5 alpha 0.5
+// gain 0.002 ref 0.16 d 1 alpha 0.5
 
 float toRad(float degrees){
 	return degrees * ((float) M_PI) / 180;
@@ -155,9 +155,9 @@ void LQRController(float stateEst[], float refSignal[]){
 	int c = 0.0158;
 	int d= 0.0158;
 	float K[4][6] = {{-a, -b,  a,  b,  c,  d},
-					 {-a, -b, -a, -b, -c, -d},
-					 { a,  b, -a, -b,  c,  d},
-					 { a,  b,  a,  b, -c, -d}};
+			{-a, -b, -a, -b, -c, -d},
+			{ a,  b, -a, -b,  c,  d},
+			{ a,  b,  a,  b, -c, -d}};
 
 	//float Kr[4][6] = {{-a, -b,  a,  b,  c,  d},
 	//			{-a, -b, -a, -b, -c, -d},
@@ -169,10 +169,10 @@ void LQRController(float stateEst[], float refSignal[]){
 	for (i = 0; i< nCtrl; i++){
 		controlSignal[i] = 0;
 		for (j = 0; j<nRefs; j++){
-			controlSignal[i]+= -K[i][j] * stateEst[j] + refSignal[i];
+			controlSignal[i]+= -K[i][j] * stateEst[j] *paramG + refSignal[i];
 			controlDebugThrust[i] = controlSignal[i];
 		}
-		controlSignal[i] = thrustToPWM(controlSignal[i]*paramG);
+		controlSignal[i] = thrustToPWM(controlSignal[i]);
 		controlDebugPWM[i] = controlSignal[i];
 		if (controlSignal[i] < 0){
 			controlSignal[i] = 0;
@@ -351,41 +351,37 @@ bool referenceGeneratorTest(void)
 
 static void referenceGeneratorTask(void* param)
 {
+	int currMode = 1;
 	//bool increase = true;
 	systemWaitStart();
 
+
 	while(1)
 	{
+
+		if (xSemaphoreTake(gatekeeperMode, 100))
+		{
+			currMode = mode;
+			xSemaphoreGive(gatekeeperMode);
+		}
+
 		if(xSemaphoreTake(gatekeeperRef, 2000))
 		{
 
-			referenceSignal[0] = paramR * m*g/4;
-			referenceSignal[1] = paramR * m*g/4;
-			referenceSignal[2] = paramR * m*g/4;
-			referenceSignal[3] = paramR * m*g/4;
-
-
-			/*
 			int i;
-
+			int step = 0;
+			bool toggle = true;
 			for(i = 0; i<NREF; i++)
 			{
-
-				if (referenceSignal[i]< 1 && increase)
-				{
-					referenceSignal[i] += 0.01;
+				if (currMode == 1 && toggle){
+					step = 0.05;
+					toggle = true;
+				} else if(currMode){
+					step = -0.05;
+					toggle = false;
 				}
-				else if (referenceSignal[i] >= 0)
-				{
-					referenceSignal[i]-= 0.01;
-					increase = false;
-				}
-				else
-				{
-					increase = true;
-				}
+				referenceSignal[i] = paramR * (m*g/4 + step);
 			}
-			 */
 			xSemaphoreGive(gatekeeperRef);
 		}
 		vTaskDelay(M2T(250)); //increase later
@@ -426,7 +422,7 @@ static void modeSwitchTask(void* param)
 			}
 			xSemaphoreGive(gatekeeperMode);
 		}
-		vTaskDelay(M2T(5000)); //increase later
+		vTaskDelay(M2T(1000)); //increase later
 	}
 }
 
@@ -514,7 +510,7 @@ PARAM_ADD(PARAM_FLOAT, ref, &paramR)
 PARAM_GROUP_STOP(params)
 
 LOG_GROUP_START(debugdata)
-//LOG_ADD(LOG_INT8, mode, &mode)
+LOG_ADD(LOG_INT8, mode, &mode)
 LOG_ADD(LOG_FLOAT, roll, &estimatedState[0]) // does this work?
 LOG_ADD(LOG_FLOAT, pitch, &estimatedState[2])
 LOG_ADD(LOG_FLOAT, yaw, &estimatedState[4])
