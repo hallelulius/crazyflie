@@ -121,12 +121,21 @@ float paramGain = 0;
 float paramD = 1;
 float paramAlpha = 0.5;
 float paramRef = 0;
-float paramTune = 0;
+float paramTune = 1;
 
+// k parameters
+float a = 15.8114;
+float b = 5.0002;
+float c = 0.0158;
+float d=  0.0158;
 
 // model constants
 float const m = 0.027;
 // gain 0.002 ref 0.16 d 1 alpha 0.5
+// how much thrust to hover?
+// change K matrix
+// how much is ref == 1
+// tune mapping
 float const g = 9.81;
 
 
@@ -154,10 +163,6 @@ float thrustToPWM(float controlSignal){
 void LQRController(float stateEst[], float refSignal[]){
 	int nCtrl = 4;
 	int nRefs = 6;
-	int a = 15.8114;
-	int b = 5.0002;
-	int c = 0.0158;
-	int d= 0.0158;
 	float K[4][6] = {{-a, -b,  a,  b,  c,  d},
 			{-a, -b, -a, -b, -c, -d},
 			{ a,  b, -a, -b,  c,  d},
@@ -445,11 +450,14 @@ static uint16_t limitThrust(int32_t value)
 
 PARAM_GROUP_START(params)
 PARAM_ADD(PARAM_FLOAT, gain, &paramGain)
-PARAM_ADD(PARAM_FLOAT, alpha, &paramAlpha)
-PARAM_ADD(PARAM_FLOAT, derv, &paramD)
+//PARAM_ADD(PARAM_FLOAT, alpha, &paramAlpha)
 PARAM_ADD(PARAM_FLOAT, ref, &paramRef)
-PARAM_ADD(PARAM_FLOAT, tune, &paramTune)
+LOG_ADD(PARAM_FLOAT, a, &a)
+LOG_ADD(PARAM_FLOAT, b, &b)
+LOG_ADD(PARAM_FLOAT, c, &c)
+LOG_ADD(PARAM_FLOAT, d, &d)
 PARAM_GROUP_STOP(params)
+
 
 LOG_GROUP_START(debugdata)
 LOG_ADD(LOG_INT8, mode, &mode)
@@ -461,8 +469,8 @@ LOG_ADD(LOG_FLOAT, pitchDot, &estimatedState[3])
 LOG_ADD(LOG_FLOAT, yawDot, &estimatedState[5])
 LOG_ADD(LOG_FLOAT, controlT1, &controlDebugThrust[0])
 LOG_ADD(LOG_FLOAT, controlT2, &controlDebugThrust[1])
-LOG_ADD(LOG_FLOAT, controlT3, &controlDebugThrust[2])
-LOG_ADD(LOG_FLOAT, controlT4, &controlDebugThrust[3])
+//LOG_ADD(LOG_FLOAT, controlT3, &controlDebugThrust[2])
+//LOG_ADD(LOG_FLOAT, controlT4, &controlDebugThrust[3])
 LOG_GROUP_STOP(debugdata)
 
 LOG_GROUP_START(stabilizer)
