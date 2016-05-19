@@ -10,18 +10,10 @@ model RefValues "Generate reference values"
 equation
   //  der(ref[1]) = 1 - ref[1]; //refrence signal are the thrust from each motor
 
-/*  ref[1] = 7e-2;
-  ref[2] = 7e-2;
-  ref[3] = 7e-2;
-  ref[4] = 7e-2;
-*/
-  ref[1] = -1; // reference z
-  ref[2] = 0; // z_v
-  ref[3] = 0; // roll
-  ref[4] = 0; // rollDot
-  ref[5] = 0; // pitch
-  ref[6] = 0; //pitchDot
-  ref[7] = 45; //yaw
-  ref[8] = 0; //yawDot
+  ref[1] = m*g/4;
+  ref[2] = m*g/4;
+  ref[3] = m*g/4;
+  ref[4] = m*g/4;
+
   annotation(Documentation(info = "<html><h1 class=\"heading\">REFERENCE VALUE GENERATION</h1><p>Use this block to generate the reference values for the system.</p></html>"));
 end RefValues;

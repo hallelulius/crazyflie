@@ -4,10 +4,10 @@ package Config
   //Import libraries
   import Modelica.SIunits;
   // Define the number of inputs and outputs from each block
-  final constant Integer nRef = 8 "Number of reference signals";
+  final constant Integer nRef = 4 "Number of reference signals";
   final constant Integer nCtrl = 4 "Number of control signals";
   final constant Integer nOut = 12 "Number of plant output signals";
-  final constant Integer nSens = 8 "Number of sensor signals";
+  final constant Integer nSens = 6 "Number of sensor signals";
   // Quadrotor specific variables
   final constant SIunits.Acceleration g = 9.81 "Gravitational acceleration";
   final constant SIunits.Mass m = 0.027 "Mass of the quadrotor";

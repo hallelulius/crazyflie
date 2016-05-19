@@ -12,15 +12,14 @@ model Controller
   RealOutput ctrl[nCtrl] "Connector of Real control signals as output" annotation(Placement(transformation(extent = {{100, -10}, {120, 10}}, rotation = 0)));
   Modelica.Blocks.Math.Add add[nCtrl](k1 = 1, k2 = -1) annotation(Placement(visible = true, transformation(origin = {2, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 0)));
  Modelica.Blocks.Math.MatrixGain K(K = [
-   -Ke, -Kf, -Ka, -Kb,  Ka,   Kb,   Kc,  Kc;
-   -Ke, -Kf, -Ka, -Kb,  -Ka, -Kb,  -Kc, -Kc;
-   -Ke, -Kf,  Ka,  Kb, -Ka,  -Kb,   Kc,  Kc;
-   -Ke, -Kf,  Ka,  Kb,  Ka,   Kb,  -Kc, -Kc])            
+   -Ka, -Kb, Ka,   Kb,   Kc,  Kc;
+   -Ka, -Kb, -Ka, -Kb,  -Kc, -Kc;
+   Ka,  Kb,  -Ka,  -Kb,   Kc,  Kc;
+   Ka,  Kb,  Ka,   Kb,  -Kc, -Kc])            
                                           annotation(Placement(visible = true, transformation(origin = {-64, -40}, extent = {{-10, -10}, {10, 10}}, rotation = 0)));
- Modelica.Blocks.Math.MatrixGain Kr(K = [-Ke, -Kf, -Ka, -Kb, Ka, Kb, Kc, Kc; -Ke, -Kf, -Ka, -Kb, -Ka, -Kb, -Kc, -Kc; -Ke, -Kf, Ka, Kb, -Ka, -Kb, Kc, Kc; -Ke, -Kf, Ka, Kb, Ka, Kb, -Kc, -Kc])                                          annotation(Placement(visible = true, transformation(origin = {-64, 26}, extent = {{-10, -10}, {10, 10}}, rotation = 0)));
+                                          
 equation
-  connect(Kr.u, ref) annotation(Line(points = {{-76, 26}, {-88, 26}, {-88, 40}, {-120, 40}, {-120, 40}}, color = {0, 0, 127}));
-  connect(Kr.y, add.u1) annotation(Line(points = {{-52, 26}, {-20, 26}, {-20, 6}, {-10, 6}, {-10, 6}}, color = {0, 0, 127}));
+  connect(ref, add.u1) annotation(Line(points = {{-120, 40}, {-40, 40}, {-40, 6}, {-10, 6}, {-10, 6}}, color = {0, 0, 127}));
   connect(K.y, add.u2) annotation(Line(points = {{-52, -40}, {-20, -40}, {-20, -6}, {-10, -6}, {-10, -6}}, color = {0, 0, 127}));
   connect(K.u, sens) annotation(Line(points = {{-76, -40}, {-102, -40}, {-102, -40}, {-120, -40}}, color = {0, 0, 127}));
   
