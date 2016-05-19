@@ -121,13 +121,16 @@ float paramGain = 0;
 float paramD = 1;
 float paramAlpha = 0.5;
 float paramRef = 0;
-float paramTune = 1;
+float paramStep = 0;
 
 // k parameters
-float a = 15.8114;
-float b = 5.0002;
-float c = 0.0158;
-float d=  0.0158;
+float Ka = 15.8114;
+float Kb = 5.0002;
+float Kc = 0.0158;
+float Kd=  0.0158;
+
+float aggressiveK[] = {0, 0, 0, 0};
+float normalK[] = {15.8114, 5.0002, 0.0158, 0.0158};
 
 // model constants
 float const m = 0.027;
@@ -135,7 +138,6 @@ float const m = 0.027;
 // how much thrust to hover?
 // change K matrix
 // how much is ref == 1
-// tune mapping
 float const g = 9.81;
 
 
@@ -154,15 +156,19 @@ float thrustToPWM(float controlSignal){
 	double b = 5.9683e5;	// 3.0676e5;
 	double c = 1.1357e3;	// 659.2136;
 	if (controlSignal > 0.15) controlSignal = 0.15;
-	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c) * paramTune;
+	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c);
 	return pwm;
 }
 
 /* LQR controller
  * u = -K * x + Kr * r */
-void LQRController(float stateEst[], float refSignal[]){
+void LQRController(float stateEst[], float refSignal[], float paramK[]){
 	int nCtrl = 4;
 	int nRefs = 6;
+	float a = paramK[0];
+	float b = paramK[1];
+	float c = paramK[2];
+	float d = paramK[3];
 	float K[4][6] = {{-a, -b,  a,  b,  c,  d},
 			{-a, -b, -a, -b, -c, -d},
 			{ a,  b, -a, -b,  c,  d},
@@ -245,8 +251,13 @@ static void mainControlTask(void* param)
 				estimatedState[4] = toRad(eulerYawActual);
 				estimatedState[5] = paramD * yawDot;
 
-				LQRController(estimatedState, currRef);
-
+				if (currMode == 1){
+					float K[] = {Ka, Kb, Kc, Kd};
+					LQRController(estimatedState, currRef, K);
+				}else{
+					float K[] = {Ka, Kb, Kc, Kd};
+					LQRController(estimatedState, currRef, K);
+				}
 				prevRoll = estimatedState[0];
 				prevPitch = estimatedState[2];
 				prevYaw = estimatedState[4];
@@ -255,20 +266,12 @@ static void mainControlTask(void* param)
 				prevPitchDot = estimatedState[3];
 				prevYawDot = estimatedState[5];
 
-				if (currMode == 1 || currMode == 0){
 
-					motorPowerM1 = limitThrust(fabs(controlSignal[0]));
-					motorPowerM2 = limitThrust(fabs(controlSignal[1]));
-					motorPowerM3 = limitThrust(fabs(controlSignal[2]));
-					motorPowerM4 = limitThrust(fabs(controlSignal[3]));
-				}
-				else
-				{
-					motorPowerM1 = limitThrust(0);
-					motorPowerM2 = limitThrust(0);
-					motorPowerM3 = limitThrust(0);
-					motorPowerM4 = limitThrust(0);
-				}
+				motorPowerM1 = limitThrust(fabs(controlSignal[0]));
+				motorPowerM2 = limitThrust(fabs(controlSignal[1]));
+				motorPowerM3 = limitThrust(fabs(controlSignal[2]));
+				motorPowerM4 = limitThrust(fabs(controlSignal[3]));
+
 
 				motorsSetRatio(MOTOR_M1, motorPowerM1);
 				motorsSetRatio(MOTOR_M2, motorPowerM2);
@@ -321,39 +324,36 @@ bool referenceGeneratorTest(void)
 
 static void referenceGeneratorTask(void* param)
 {
-	int currMode = 1;
+	bool toggle = true;
+	bool up = true;
 	systemWaitStart();
-
 
 	while(1)
 	{
-
-		if (xSemaphoreTake(gatekeeperMode, 100))
-		{
-			currMode = mode;
-			xSemaphoreGive(gatekeeperMode);
-		}
-
 		if(xSemaphoreTake(gatekeeperRef, 2000))
 		{
 
 			int i;
 			float step = 0;
-			bool toggle = true;
+
 			for(i = 0; i<NREF; i++)
 			{
-				if (currMode == 1 && toggle){
-					step = 0;
+				if (toggle && up){
+					step = paramStep;
 					toggle = false;
-				} else if(currMode){
-					step = -0;
+					up = false;
+				} else if(toggle && !up){
+					step = -paramStep;
+					toggle = false;
+					up = true;
+				} else {
 					toggle = true;
 				}
 				referenceSignal[i] = m*g/4 + step;
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
-		vTaskDelay(M2T(5000)); //increase later
+		vTaskDelay(M2T(4000));
 	}
 }
 
@@ -390,7 +390,7 @@ static void modeSwitchTask(void* param)
 			}
 			xSemaphoreGive(gatekeeperMode);
 		}
-		vTaskDelay(M2T(2000)); //increase later
+		vTaskDelay(M2T(5000)); //increase later
 	}
 }
 
@@ -452,10 +452,11 @@ PARAM_GROUP_START(params)
 PARAM_ADD(PARAM_FLOAT, gain, &paramGain)
 PARAM_ADD(PARAM_FLOAT, alpha, &paramAlpha)
 PARAM_ADD(PARAM_FLOAT, ref, &paramRef)
-LOG_ADD(PARAM_FLOAT, a, &a)
-LOG_ADD(PARAM_FLOAT, b, &b)
-LOG_ADD(PARAM_FLOAT, c, &c)
-LOG_ADD(PARAM_FLOAT, d, &d)
+PARAM_ADD(PARAM_FLOAT, step, &paramStep)
+LOG_ADD(PARAM_FLOAT, Ka, &Ka)
+LOG_ADD(PARAM_FLOAT, Kb, &Kb)
+LOG_ADD(PARAM_FLOAT, Kc, &Kc)
+LOG_ADD(PARAM_FLOAT, Kd, &Kd)
 PARAM_GROUP_STOP(params)
 
 
