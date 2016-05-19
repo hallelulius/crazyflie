@@ -148,11 +148,11 @@ float thrustToPWM(float controlSignal){
 	//	  b	5.9683e5;
 	//	  c	1.1357e3
 	// new   8.1372e+05
-	//  3.0676e+05
-	//  659.2136
-	double a = 8.1372e5;
-	double b = 3.0676e5;
-	double c = 0;// 659.2136;
+	//  	 3.0676e+05
+	//  	 659.2136
+	double a = -1.2205e6;	// 8.1372e5;
+	double b = 5.9683e5;	// 3.0676e5;
+	double c = 1.1357e3;	// 659.2136;
 	if (controlSignal > 0.15) controlSignal = 0.15;
 	float pwm = (a * pow(controlSignal,2) + b * controlSignal + c) * paramTune;
 	return pwm;
@@ -338,22 +338,22 @@ static void referenceGeneratorTask(void* param)
 		{
 
 			int i;
-			int step = 0;
+			float step = 0;
 			bool toggle = true;
 			for(i = 0; i<NREF; i++)
 			{
 				if (currMode == 1 && toggle){
-					step = 0.05;
+					step = 0;
 					toggle = false;
 				} else if(currMode){
-					step = -0.05;
+					step = -0;
 					toggle = true;
 				}
 				referenceSignal[i] = m*g/4 + step;
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
-		vTaskDelay(M2T(250)); //increase later
+		vTaskDelay(M2T(5000)); //increase later
 	}
 }
 
@@ -450,7 +450,7 @@ static uint16_t limitThrust(int32_t value)
 
 PARAM_GROUP_START(params)
 PARAM_ADD(PARAM_FLOAT, gain, &paramGain)
-//PARAM_ADD(PARAM_FLOAT, alpha, &paramAlpha)
+PARAM_ADD(PARAM_FLOAT, alpha, &paramAlpha)
 PARAM_ADD(PARAM_FLOAT, ref, &paramRef)
 LOG_ADD(PARAM_FLOAT, a, &a)
 LOG_ADD(PARAM_FLOAT, b, &b)
