@@ -17,9 +17,9 @@ initial equation
 x = 0;
 y = 0;
 z = 0;
-pitch = 0.2;
-roll = 0.8;
-yaw = -1.1;
+pitch = 1.2;
+roll = -0.9;
+yaw = -0.3;
 equation
   //Nonlinear model of a x-configuration quadrotor
   
