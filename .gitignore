@@ -1,5 +1,7 @@
 build_info.json
 
+.order
+
 ^bin/dep/all
 bin/*
 .cproject
