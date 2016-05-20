@@ -95,7 +95,7 @@ static void modeSwitchTask(void *arg);
 
 // global variables for the control
 const int NREF = 4;
-float referenceSignal[4];
+float referenceSignal[4] = {0, 0, 0, 0};
 float controlSignal[] = {0, 0, 0, 0};
 float controlDebugThrust[] = {0, 0, 0, 0};
 float controlDebugPWM[] = {0, 0, 0, 0};
@@ -119,25 +119,25 @@ float prevYawDot = 0;
 // tuning parameters
 float paramGain = 0;
 float paramD = 1;
-float paramAlpha = 0.5;
+float paramAlpha = 0.9;
 float paramRef = 0;
-float paramStep = 0;
+float paramStep = 0.005;
 
 // k parameters
-float Ka = 15.8114;
-float Kb = 5.0002;
-float Kc = 0.0158;
-float Kd=  0.0158;
+float Ka = 0.0255;
+float Kb = 0.0085;
+float Kc = 0;
+float Kd=  0;
 
-float aggressiveK[] = {0, 0, 0, 0};
-float normalK[] = {15.8114, 5.0002, 0.0158, 0.0158};
+float aggressiveK[] = {0.0224, 0.0074, 0.0005, 0.0025};
+float normalK[] = {0.0255, 0.0085, 0, 0};
 
 // model constants
 float const m = 0.027;
 // gain 0.002 ref 0.16 d 1 alpha 0.5
-// how much thrust to hover?
+// gain 0.0014 ref 0.16 d 1 alpha 0.5
+// how much thrust to hover? around 0.15 depending on battery
 // change K matrix
-// how much is ref == 1
 float const g = 9.81;
 
 
@@ -178,9 +178,9 @@ void LQRController(float stateEst[], float refSignal[], float paramK[]){
 	int j;
 
 	for (i = 0; i< nCtrl; i++){
-		controlSignal[i] = 0;
+		controlSignal[i] =  refSignal[i] *paramRef;
 		for (j = 0; j<nRefs; j++){
-			controlSignal[i]+= -K[i][j] * stateEst[j] *paramGain + refSignal[i] *paramRef;
+			controlSignal[i]+= -K[i][j] * stateEst[j] *paramGain;
 			controlDebugThrust[i] = controlSignal[i];
 		}
 		controlSignal[i] = thrustToPWM(controlSignal[i]);
@@ -255,8 +255,8 @@ static void mainControlTask(void* param)
 					float K[] = {Ka, Kb, Kc, Kd};
 					LQRController(estimatedState, currRef, K);
 				}else{
-					float K[] = {Ka, Kb, Kc, Kd};
-					LQRController(estimatedState, currRef, K);
+
+					LQRController(estimatedState, currRef, normalK);
 				}
 				prevRoll = estimatedState[0];
 				prevPitch = estimatedState[2];
@@ -335,21 +335,20 @@ static void referenceGeneratorTask(void* param)
 
 			int i;
 			float step = 0;
-
+			if (toggle && up){
+				step = paramStep;
+				toggle = false;
+				up = false;
+			} else if(toggle && !up){
+				step = -paramStep;
+				toggle = false;
+				up = true;
+			} else {
+				toggle = true;
+			}
 			for(i = 0; i<NREF; i++)
 			{
-				if (toggle && up){
-					step = paramStep;
-					toggle = false;
-					up = false;
-				} else if(toggle && !up){
-					step = -paramStep;
-					toggle = false;
-					up = true;
-				} else {
-					toggle = true;
-				}
-				referenceSignal[i] = m*g/4 + step;
+				referenceSignal[i] = m*g/4.0 + step;
 			}
 			xSemaphoreGive(gatekeeperRef);
 		}
@@ -390,7 +389,7 @@ static void modeSwitchTask(void* param)
 			}
 			xSemaphoreGive(gatekeeperMode);
 		}
-		vTaskDelay(M2T(5000)); //increase later
+		vTaskDelay(M2T(10000)); //increase later
 	}
 }
 
@@ -470,6 +469,7 @@ LOG_ADD(LOG_FLOAT, pitchDot, &estimatedState[3])
 LOG_ADD(LOG_FLOAT, yawDot, &estimatedState[5])
 LOG_ADD(LOG_FLOAT, controlT1, &controlDebugThrust[0])
 LOG_ADD(LOG_FLOAT, controlT2, &controlDebugThrust[1])
+LOG_ADD(LOG_FLOAT, ref1, &referenceSignal[1])
 //LOG_ADD(LOG_FLOAT, controlT3, &controlDebugThrust[2])
 //LOG_ADD(LOG_FLOAT, controlT4, &controlDebugThrust[3])
 LOG_GROUP_STOP(debugdata)
